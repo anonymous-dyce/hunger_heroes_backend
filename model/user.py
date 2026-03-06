@@ -1,7 +1,7 @@
 # user.py
 from flask import current_app
 from flask_login import UserMixin
-from datetime import date
+from datetime import date, datetime
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
@@ -45,9 +45,16 @@ class User(db.Model, UserMixin):
         id (Column): The primary key, an integer representing the unique identifier for the user.
         _name (Column): A string representing the user's name. It is not unique and cannot be null.
         _uid (Column): A unique string identifier for the user, cannot be null.
+        _email (Column): Email address, cannot be null.
         _password (Column): A string representing the hashed password of the user. It is not unique and cannot be null.
-        _role (Column): A string representing the user's role within the application. Defaults to "User".
+        _role (Column): A string representing the user's role within the application.
+                        Allowed values: 'Admin', 'Donor', 'Receiver', 'Volunteer', 'User'
         _pfp (Column): A string representing the path to the user's profile picture. It can be null.
+        _car (Column): A string representing the user's vehicle info. It can be null.
+        _organization_id (Column): Foreign key - if Receiver role, user belongs to organization.
+        created_at (Column): User account creation timestamp.
+        updated_at (Column): Last update timestamp.
+        is_active (Column): Whether user account is active.
     """
     __tablename__ = 'users'
 
@@ -56,14 +63,19 @@ class User(db.Model, UserMixin):
     _uid = db.Column(db.String(255), unique=True, nullable=False)
     _email = db.Column(db.String(255), unique=False, nullable=False)
     _password = db.Column(db.String(255), unique=False, nullable=False)
-    _role = db.Column(db.String(20), default="User", nullable=False)
+    _role = db.Column(db.String(20), default="User", nullable=False)  # Admin, Donor, Receiver, Volunteer, User
     _pfp = db.Column(db.String(255), unique=False, nullable=True)
     _car = db.Column(db.String(255), unique=False, nullable=True)
+    _organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=True)  # For Receiver role
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
    
     posts = db.relationship('Post', backref='author', lazy=True)
+    organization = db.relationship('Organization', backref='members', lazy=True)
                                  
     
-    def __init__(self, name, uid, password="", role="User", pfp='', car='', email='?'):
+    def __init__(self, name, uid, password="", role="User", pfp='', car='', email='?', organization_id=None):
         """
         Constructor, 1st step in object creation.
         
@@ -71,8 +83,13 @@ class User(db.Model, UserMixin):
             name (str): The name of the user.
             uid (str): The unique identifier for the user.
             password (str): The password for the user.
-            role (str): The role of the user within the application. Defaults to "User".
+            role (str): The role of the user within the application. 
+                       Options: 'Admin', 'Donor', 'Receiver', 'Volunteer', 'User'
+                       Defaults to 'User'.
             pfp (str): The path to the user's profile picture. Defaults to an empty string.
+            car (str): The user's vehicle information.
+            email (str): The user's email address.
+            organization_id (int): If user is 'Receiver', link to organization.
         """
         self._name = name
         self._uid = uid
@@ -81,6 +98,7 @@ class User(db.Model, UserMixin):
         self._role = role
         self._pfp = pfp
         self._car = car
+        self._organization_id = organization_id
 
     # UserMixin/Flask-Login requires a get_id method to return the id as a string
     def get_id(self):
@@ -277,6 +295,45 @@ class User(db.Model, UserMixin):
         """
         return self._role == "Admin"
     
+    def is_donor(self):
+        """
+        Checks if the user is a donor (can create donations).
+        
+        Returns:
+            bool: True if the user is a donor, False otherwise.
+        """
+        return self._role == "Donor"
+    
+    def is_receiver(self):
+        """
+        Checks if the user is a receiver (organization that accepts donations).
+        
+        Returns:
+            bool: True if the user is a receiver, False otherwise.
+        """
+        return self._role == "Receiver"
+    
+    def is_volunteer(self):
+        """
+        Checks if the user is a volunteer (can transport donations).
+        
+        Returns:
+            bool: True if the user is a volunteer, False otherwise.
+        """
+        return self._role == "Volunteer"
+    
+    def has_role(self, *roles):
+        """
+        Checks if the user has any of the specified roles.
+        
+        Args:
+            *roles: Variable number of role strings to check.
+        
+        Returns:
+            bool: True if user has any of the specified roles, False otherwise.
+        """
+        return self._role in roles
+    
     @property
     def pfp(self):
         """
@@ -337,7 +394,11 @@ class User(db.Model, UserMixin):
             "email": self.email,
             "role": self._role,
             "pfp": self._pfp,
-            "car": self._car
+            "car": self._car,
+            "organization_id": self._organization_id,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
         return data
         
