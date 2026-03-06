@@ -53,6 +53,10 @@ from model.vote import Vote, initVotes
 from model.savedLocations import SavedLocations, initSavedLocations
 from model.subscription import Subscription, SubscriptionRequest, PaymentHistory, RouteUsage, initSubscriptions
 from model.donation import Donation, initDonations
+from model.organization import Organization, initOrganizations
+from model.food_safety_log import FoodSafetyLog, initFoodSafetyLogs
+from model.allergen_profile import AllergenProfile, initAllergenProfiles
+from model.donation_feedback import DonationFeedback, initDonationFeedback
 from model.cleanup import start_cleanup_scheduler
 
 
