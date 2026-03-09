@@ -283,7 +283,7 @@ def main():
     
     # Summary
     print("\n" + "=" * 60)
-    print("📊 VERIFICATION SUMMARY")
+    print("VERIFICATION SUMMARY")
     print("=" * 60)
     
     passed = sum(1 for _, result in results if result)
