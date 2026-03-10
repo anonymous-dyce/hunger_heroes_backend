@@ -52,7 +52,7 @@ from model.nestPost import NestPost, initNestPosts
 from model.vote import Vote, initVotes
 from model.savedLocations import SavedLocations, initSavedLocations
 from model.subscription import Subscription, SubscriptionRequest, PaymentHistory, RouteUsage, initSubscriptions
-from model.donation import Donation, initDonations
+from model.donation import Donation, DonationStatusLog, VolunteerAssignment, initDonations
 from model.cleanup import start_cleanup_scheduler
 
 

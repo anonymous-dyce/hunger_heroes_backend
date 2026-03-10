@@ -27,7 +27,7 @@ cors = CORS(app,
         'https://ahaanv19.github.io'
     ],
     allow_headers=['Content-Type', 'Authorization', 'X-Origin'],
-    methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 )
 
 # System Defaults
