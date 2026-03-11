@@ -15,29 +15,7 @@ import logging
 
 # import "objects" from "this" project
 from __init__ import app, db, login_manager
-
-# Error handling and middleware
-from model.utils.errors import register_error_handlers, log_request, handle_cors
-
-# Database models (must be imported before routes to initialize relationships)
-from model.carChat import CarChat
-from model.mod import Section, initSections
-from model.group import Group, initGroups
-from model.channel import Channel, initChannels
-from model.post import Post, initPosts
-from model.nestPost import NestPost, initNestPosts
-from model.vote import Vote, initVotes
-from model.savedLocations import SavedLocations, initSavedLocations
-from model.subscription import Subscription, SubscriptionRequest, PaymentHistory, RouteUsage, initSubscriptions
-from model.donation import Donation, initDonations
-from model.organization import Organization, initOrganizations
-from model.food_safety_log import FoodSafetyLog, initFoodSafetyLogs
-from model.allergen_profile import AllergenProfile, initAllergenProfiles
-from model.donation_feedback import DonationFeedback, initDonationFeedback
-from model.user import User, initUsers
-from model.cleanup import start_cleanup_scheduler
-
-# API endpoints (after models)
+# API endpoints
 from api.user import user_api 
 from api.pfp import pfp_api
 from api.nestImg import nestImg_api
@@ -63,16 +41,22 @@ from api.stripe_api import stripe_api
 from api.businesses import businesses_api
 from api.donation import donation_api
 
-# New authentication routes (AFTER all models loaded)
-from model.auth import auth_bp, users_bp
+# database Initialization functions
+from model.carChat import CarChat
+from model.user import User, initUsers
+from model.mod import Section, initSections
+from model.group import Group, initGroups
+from model.channel import Channel, initChannels
+from model.post import Post, initPosts
+from model.nestPost import NestPost, initNestPosts
+from model.vote import Vote, initVotes
+from model.savedLocations import SavedLocations, initSavedLocations
+from model.subscription import Subscription, SubscriptionRequest, PaymentHistory, RouteUsage, initSubscriptions
+from model.donation import Donation, initDonations
+from model.cleanup import start_cleanup_scheduler
 
 
 # server only View
-
-# Register error handlers and middleware
-register_error_handlers(app)
-log_request(app)
-handle_cors(app)
 
 # register URIs for api endpoints
 app.register_blueprint(messages_api)
@@ -98,10 +82,6 @@ app.register_blueprint(subscription_api)
 app.register_blueprint(stripe_api)
 app.register_blueprint(businesses_api)
 app.register_blueprint(donation_api)
-
-# Register new authentication routes
-app.register_blueprint(auth_bp)
-app.register_blueprint(users_bp)
 
 
 # Tell Flask-Login the view function name of your login route
