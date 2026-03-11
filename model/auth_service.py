@@ -13,7 +13,7 @@ from flask import current_app, g, request
 from werkzeug.security import generate_password_hash, check_password_hash
 from __init__ import db
 from model.user import User
-from utils.response import APIResponse, AuthError, ValidationError
+from model.utils.response import APIResponse, AuthError, ValidationError
 
 
 logger = logging.getLogger(__name__)
@@ -61,13 +61,12 @@ class AuthService:
         # Create user object
         try:
             user = User(
-                _name=name,
-                _email=email,
-                _uid=email.split("@")[0],  # Generate UID from email
-                _password=generate_password_hash(password),
-                _role=role,
-                _organization_id=organization_id,
-                _is_active=True
+                name=name,
+                email=email,
+                uid=email.split("@")[0],  # Generate UID from email
+                password=generate_password_hash(password),
+                role=role,
+                organization_id=organization_id
             )
             
             db.session.add(user)
@@ -110,7 +109,7 @@ class AuthService:
             raise AuthError("Invalid email or password", "INVALID_CREDENTIALS")
         
         # Check if user is active
-        if not user._is_active:
+        if not user.is_active:
             raise AuthError("User account is inactive", "ACCOUNT_INACTIVE")
         
         # Generate JWT token
@@ -242,7 +241,7 @@ def token_required(roles=None):
                 
                 # Get user from database
                 user = User.query.get(payload.get("id"))
-                if not user or not user._is_active:
+                if not user or not user.is_active:
                     return APIResponse.unauthorized(
                         message="User not found or inactive"
                     )
