@@ -1,53 +1,83 @@
+# Hunger Heroes — Backend
 
-# 🚗 Poway Auto Backend
+Small, maintainable backend for the Hunger Heroes project (API + data layer).
 
-The **Poway Auto Backend** is the server-side system behind Poway Auto — a full-stack platform built to improve routing and traffic efficiency in the City of Poway.
+## Overview
+This repository provides the HTTP API and persistence for Hunger Heroes: user accounts, donation flows, meal records, and basic admin operations.
 
-This backend handles routing logic, traffic data processing, and communication with the frontend and external APIs.
+## Features
+- REST JSON API for users, donations, meals
+- Authentication (JWT)
+- Database migrations & seed helpers
+- Tests and linting
 
----
+## Tech stack (recommended)
+- Node.js (LTS) + npm or yarn
+- Express / Fastify (or similar)
+- PostgreSQL (or compatible SQL DB)
+- Optional: Redis for caching, Docker for local dev
 
-## 💡 How It Works
+## Quick start
+1. Clone
+   ```bash
+   git clone <repo> && cd hunger_heroes_backend
+   ```
+2. Copy env
+   ```bash
+   cp .env.example .env
+   ```
+3. Install
+   ```bash
+   npm install
+   # or
+   yarn
+   ```
+4. Create DB and run migrations
+   ```bash
+   # example with a migration tool
+   npm run db:migrate
+   npm run db:seed
+   ```
+5. Start dev server
+   ```bash
+   npm run dev
+   ```
 
-1. **Receives Requests from Frontend**  
-   The frontend sends route requests, hazard reports, or user actions to the backend using HTTP endpoints.
+## Environment variables (example)
+```
+PORT=3000
+NODE_ENV=development
+DATABASE_URL=postgres://user:pass@localhost:5432/hunger_heroes
+JWT_SECRET=replace_with_secure_secret
+LOG_LEVEL=info
+REDIS_URL=redis://localhost:6379
+```
 
-2. **Processes Real-Time Traffic Data**  
-   The backend connects with Google Maps and Poway’s open datasets to calculate accurate and optimized routes.
+## Typical scripts
+- npm run dev — start development server with hot-reload
+- npm start — start production server
+- npm test — run test suite
+- npm run lint — run linters
+- npm run db:migrate / db:seed — database tasks
 
-3. **Returns Optimized Routes or Data**  
-   Based on traffic conditions, user routines, or hazard locations, it returns optimized routing instructions or relevant data.
+## Minimal API examples
+- Register: POST /api/auth/register { "email", "password" }
+- Login: POST /api/auth/login { "email", "password" } → returns JWT
+- Get user: GET /api/users/:id (auth)
+- Create donation: POST /api/donations (auth) { "amount", "note" }
+- List meals: GET /api/meals
 
-4. **Stores Data**  
-   All hazard reports, user routines, and simulation settings are stored in a database using SQLAlchemy.
-
----
-
-## ⚙️ Tech Used
-
-- **Flask** – to create REST APIs  
-- **SQLAlchemy** – to manage the database  
-- **Google Maps API** – for traffic and routing data  
-- **Docker** – for easy deployment  
-- **JSON/CSV** – to handle static and live datasets  
-
----
-
-## 📁 Key Features
-
-- Route optimization using live traffic
-- Daily routine planning and storage
-- Hazard alert reporting and visualization
-- Support for fleet simulation
-- Easy API integration with frontend
-
----
-
-## 🧪 How to Run
-
+Example curl:
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+curl -H "Authorization: Bearer $TOKEN" https://api.example.com/api/donations
+```
 
-# Run the server
-python run.py
+## Testing
+- Write unit & integration tests.
+- Use an isolated test database; run migrations before tests.
+- CI should run lint, tests, and (optional) security checks.
+
+## Contributing
+- Follow the repository's code style and tests.
+- Open issues or PRs with clear descriptions and reproducible steps.
+
