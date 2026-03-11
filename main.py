@@ -17,7 +17,7 @@ import logging
 from __init__ import app, db, login_manager
 
 # Error handling and middleware
-from utils.errors import register_error_handlers, log_request, handle_cors
+from model.utils.errors import register_error_handlers, log_request, handle_cors
 
 # Database models (must be imported before routes to initialize relationships)
 from model.carChat import CarChat
@@ -64,7 +64,7 @@ from api.businesses import businesses_api
 from api.donation import donation_api
 
 # New authentication routes (AFTER all models loaded)
-from routes.auth import auth_bp, users_bp
+from model.auth import auth_bp, users_bp
 
 
 # server only View

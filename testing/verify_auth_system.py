@@ -23,17 +23,17 @@ def test_imports():
     """Test all critical imports."""
     print("Testing imports...")
     try:
-        from utils.response import APIResponse, ValidationError, AuthError
-        print("  ✅ utils.response imported")
+        from model.utils.response import APIResponse, ValidationError, AuthError
+        print("  ✅ model.utils.response imported")
         
-        from utils.errors import register_error_handlers
-        print("  ✅ utils.errors imported")
+        from model.utils.errors import register_error_handlers
+        print("  ✅ model.utils.errors imported")
         
-        from services.auth_service import AuthService, token_required, rbac_required
-        print("  ✅ services.auth_service imported")
+        from model.auth_service import AuthService, token_required, rbac_required
+        print("  ✅ model.auth_service imported")
         
-        from routes.auth import auth_bp, users_bp
-        print("  ✅ routes.auth imported")
+        from model.auth import auth_bp, users_bp
+        print("  ✅ model.auth imported")
         
         return True
     except ImportError as e:
@@ -46,7 +46,7 @@ def test_response_formatting():
     print("\nTesting response formatting...")
     try:
         from __init__ import app
-        from utils.response import APIResponse
+        from model.utils.response import APIResponse
         
         with app.app_context():
             # Success response
@@ -99,7 +99,7 @@ def test_exceptions():
     """Test custom exception classes."""
     print("\nTesting custom exceptions...")
     try:
-        from utils.response import ValidationError, AuthError
+        from model.utils.response import ValidationError, AuthError
         
         # ValidationError
         try:
@@ -150,7 +150,7 @@ def test_auth_service():
     """Test authentication service methods."""
     print("\nTesting authentication service...")
     try:
-        from services.auth_service import AuthService
+        from model.auth_service import AuthService
         from __init__ import app, db
         
         with app.app_context():
