@@ -6,7 +6,37 @@ error response formatting across the Flask application.
 """
 
 from flask import jsonify, request
-from utils.response import APIResponse
+from model.utils.response import APIResponse
+
+
+def redact_sensitive_fields(data):
+    """
+    Redact sensitive fields from request/response data for logging.
+    
+    Args:
+        data (dict): The data to redact
+        
+    Returns:
+        dict: A copy of the data with sensitive fields redacted
+    """
+    if not isinstance(data, dict):
+        return data
+    
+    # Create a copy to avoid modifying the original
+    redacted = data.copy()
+    
+    # List of sensitive field names to redact
+    sensitive_fields = {
+        'password', 'token', 'secret', 'api_key', 'authorization',
+        'auth_token', 'access_token', 'refresh_token', 'jwt', 'credit_card'
+    }
+    
+    # Redact sensitive fields
+    for field in sensitive_fields:
+        if field in redacted:
+            redacted[field] = '***REDACTED***'
+    
+    return redacted
 
 
 def register_error_handlers(app):
@@ -93,7 +123,10 @@ def log_request(app):
         """Log request details before processing."""
         app.logger.debug(f"{request.method} {request.path} - IP: {request.remote_addr}")
         if request.get_json(silent=True):
-            app.logger.debug(f"Request body: {request.get_json()}")
+            # Redact sensitive fields before logging
+            request_data = request.get_json()
+            redacted_data = redact_sensitive_fields(request_data)
+            app.logger.debug(f"Request body: {redacted_data}")
 
     @app.after_request
     def log_response_info(response):
