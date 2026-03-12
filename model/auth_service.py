@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 from flask import current_app, g, request
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy.exc import IntegrityError
+import uuid
 from __init__ import db
 from model.user import User
 from model.utils.response import APIResponse, AuthError, ValidationError
@@ -53,17 +55,27 @@ class AuthService:
         if role not in ["User", "Donor", "Receiver", "Volunteer", "Admin"]:
             raise ValidationError(f"Invalid role: {role}")
         
+        # Validate organization_id for Receiver role
+        if role == "Receiver" and not organization_id:
+            raise ValidationError("organization_id is required for Receiver role")
+        
         # Check for existing user
         existing_user = User.query.filter_by(_email=email).first()
         if existing_user:
             raise ValidationError(f"User with email {email} already exists")
         
-        # Create user object
+        # Create user object with unique UID
         try:
+            # Generate unique UID by appending uuid suffix since email prefix can collide
+            # Format: email_prefix-uuid_suffix (e.g., alice-a1b2c3d4)
+            email_prefix = email.split("@")[0]
+            unique_suffix = str(uuid.uuid4())[:8]
+            unique_uid = f"{email_prefix}-{unique_suffix}"
+            
             user = User(
                 name=name,
                 email=email,
-                uid=email.split("@")[0],  # Generate UID from email
+                uid=unique_uid,
                 password=generate_password_hash(password),
                 role=role,
                 organization_id=organization_id
@@ -72,13 +84,24 @@ class AuthService:
             db.session.add(user)
             db.session.commit()
             
-            logger.info(f"User registered: {email}")
+            logger.info(f"User registered: {email} with UID: {unique_uid}")
             return user.read()
             
+        except IntegrityError as e:
+            db.session.rollback()
+            # Map SQL integrity errors to specific validation errors
+            error_msg = str(e.orig).lower()
+            if "unique constraint" in error_msg or "duplicate" in error_msg:
+                logger.warning(f"Registration failed - duplicate user data: {email}")
+                raise ValidationError(f"User with email {email} already exists")
+            else:
+                logger.error(f"Database integrity error during registration: {error_msg}")
+                raise ValidationError("A user with this information already exists")
         except Exception as e:
             db.session.rollback()
-            logger.error(f"Error registering user: {str(e)}")
-            raise ValidationError(f"Error registering user: {str(e)}")
+            logger.error(f"Unexpected error during user registration: {str(e)}", exc_info=True)
+            # Return generic message to client - don't expose internal errors
+            raise ValidationError("An error occurred during registration. Please try again.")
 
     @staticmethod
     def login_user(email: str, password: str) -> str:
@@ -212,6 +235,10 @@ def token_required(roles=None):
     """
     Decorator to guard API endpoints that require authentication.
     
+    Supports two authentication methods:
+    1. Authorization header (preferred for non-browser clients): Authorization: Bearer <token>
+    2. Cookie (for browser-based clients): JWT_TOKEN_NAME cookie
+    
     Args:
         roles: List of allowed roles (optional). If provided, user must have one of these roles.
         
@@ -228,11 +255,20 @@ def token_required(roles=None):
     def decorator(func):
         @wraps(func)
         def decorated_function(*args, **kwargs):
-            token = request.cookies.get(current_app.config["JWT_TOKEN_NAME"])
+            # Try to get token from Authorization header first (Bearer token)
+            auth_header = request.headers.get('Authorization', '')
+            token = None
+            
+            if auth_header.startswith('Bearer '):
+                # Extract Bearer token
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+            elif not token:
+                # Fall back to cookie if no Bearer token found
+                token = request.cookies.get(current_app.config["JWT_TOKEN_NAME"])
             
             if not token:
                 return APIResponse.unauthorized(
-                    message="Authentication token is missing"
+                    message="Authentication token is missing. Use 'Authorization: Bearer <token>' header or set JWT token cookie"
                 )
             
             try:
