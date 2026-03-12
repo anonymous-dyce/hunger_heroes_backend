@@ -45,6 +45,7 @@ from model.auth import auth_bp, users_bp
 
 # database Initialization functions
 from model.carChat import CarChat
+from model.organization import Organization, initOrganizations
 from model.user import User, initUsers
 from model.mod import Section, initSections
 from model.group import Group, initGroups
@@ -187,6 +188,11 @@ custom_cli = AppGroup('custom', help='Custom commands')
 # Define a command to run the data generation functions
 @custom_cli.command('generate_data')
 def generate_data():
+    try:
+        initOrganizations()
+    except Exception as e:
+        print(f"Error in initOrganizations: {e}")
+
     try:
         initUsers()
     except Exception as e:
