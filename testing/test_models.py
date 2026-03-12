@@ -40,9 +40,24 @@ class TestUserModel(unittest.TestCase):
         """Set up test fixtures."""
         self.app = app
         self.app.config['TESTING'] = True
+        # Use an in-memory SQLite database for tests
         self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+
+        # Create and push an application context
         self.ctx = self.app.app_context()
         self.ctx.push()
+
+        # Ensure the SQLAlchemy engine is re-bound to the test URI.
+        # Remove any existing session and dispose of the current engine/cache
+        db.session.remove()
+        # Dispose of the existing engine if it has already been created
+        if hasattr(db, "engine"):
+            db.engine.dispose()
+        # Clear any cached engine for this app (for Flask-SQLAlchemy versions that use it)
+        if hasattr(db, "engines"):
+            db.engines.pop(self.app, None)
+
+        # Now create all tables against the in-memory test database
         db.create_all()
     
     def tearDown(self):
