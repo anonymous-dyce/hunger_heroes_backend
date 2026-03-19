@@ -1,10 +1,10 @@
 <!-- Navigation Bar from bootstrap
 This HTML is setup as a fragment allowing it to be "included" by other HTML files via Jinja2
 -->
-<nav class="navbar navbar-expand-lg" style="background-color: #343a40;">
+<nav class="navbar navbar-expand-lg" style="background-color: #2d5f4f;">
     <div class="container-fluid">
         <div class="btn-group">
-            <a class="navbar-brand" href="https://ahaanv19.github.io/Poway_Auto_Frontend/" style="color: #ffffff;">{{basename}}</a>
+            <a class="navbar-brand" href="/" style="color: #ffffff; font-weight: bold;">{{basename}}</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -14,20 +14,26 @@ This HTML is setup as a fragment allowing it to be "included" by other HTML file
                 <a class="nav-link" href={{ url_for('index') }} style="color: #ffffff;">Home</a>
                 <div class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" id="navbarDarkDropdownMenuLink" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="color: #ffffff;">
-                      Data 
+                      API & Data 
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="navbarDarkDropdownMenuLink">
                         <li><a class="dropdown-item" href={{ url_for('utable') }}>User Management</a></li>
-                        <li><a class="dropdown-item" href={{ url_for('u2table') }}>User Management 2</a></li>
+                        <li><a class="dropdown-item" href={{ url_for('u2table') }}>Data Tables</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/api/donations">Donations API</a></li>
+                        <li><a class="dropdown-item" href="/api/users">Users API</a></li>
                     </ul>
                 </div>
                 <div class="dropdown px-3">
                     <a class="nav-link dropdown-toggle" href="#" role="button" id="githubDropdown" data-bs-toggle="dropdown" aria-expanded="false" style="color: #ffffff;">
-                        Github
+                        Resources
                     </a>
                     <ul class="dropdown-menu dropdown-menu-dark" aria-labelledby="githubDropdown">
-                        <li><a class="dropdown-item" href="https://github.com/Ahaanv19/Poway_Auto_Frontend">Front End</a></li>
-                        <li><a class="dropdown-item" href="https://github.com/Ahaanv19/Poway_Auto_Backend">Back End</a></li>
+                        <li><a class="dropdown-item" href="https://github.com/Ahaanv19/hunger_heroes_backend">Backend Repository</a></li>
+                        <li><a class="dropdown-item" href="https://github.com/Ahaanv19">GitHub Profile</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="/docs/backend_initial_guide.md">Backend Guide</a></li>
+                        <li><a class="dropdown-item" href="/docs/FOOD_SAFETY_API.md">Food Safety API</a></li>
                     </ul>
                 </div>
             </div>
@@ -42,7 +48,7 @@ This HTML is setup as a fragment allowing it to be "included" by other HTML file
             
             {% if current_user.is_authenticated %}
                 <div class="dropdown px-3">
-                    <span class="dropdown-toggle link-dark" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="color: #ffffff;">
+                    <span class="dropdown-toggle link-light" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="color: #ffffff;">
                         {{ current_user.name }}
                     </span>
                     <ul class="dropdown-menu dropdown-menu-dark">
@@ -58,14 +64,14 @@ This HTML is setup as a fragment allowing it to be "included" by other HTML file
                     </ul>
                 </div>
             {% else %}
-                <a href="{{ url_for('login') }}" class="px-3 link-dark" style="color: #ffffff;">Login</a>
+                <a href="{{ url_for('login') }}" class="px-3 link-light" style="color: #ffffff;">Login</a>
             {% endif %}
             
 
             <!-- Dark mode action -->
             <div class="form-check form-switch">
                 <label class="custom-control-label" for="darkSwitch"></label>
-                <input type="checkbox" onclick="darkFunction()" class="form-check-input link-dark" id="darkSwitch">
+                <input type="checkbox" onclick="darkFunction()" class="form-check-input link-light" id="darkSwitch">
             </div>
         </div>
 
@@ -73,7 +79,7 @@ This HTML is setup as a fragment allowing it to be "included" by other HTML file
         <script>
             const search = document.getElementById('search');
             const google = 'https://www.google.com/search?q=site%3A+';
-            const site = 'https://nighthawkcodingsociety.com';
+            const site = 'https://github.com/Ahaanv19/hunger_heroes_backend';
 
             function submitted(event) {
                 if (event.key === 'Enter') {

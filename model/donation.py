@@ -100,6 +100,9 @@ class Donation(db.Model):
     dietary_tags = db.Column(db.JSON, nullable=True)
     temperature_at_pickup = db.Column(db.Float, nullable=True)
     storage_method = db.Column(db.String(50), nullable=True)
+    prepared_at = db.Column(db.DateTime, nullable=True)  # When food was prepared
+    requires_review = db.Column(db.Boolean, default=False)  # Flag for low safety scores
+    safety_score = db.Column(db.Float, default=100)  # 0-100 safety score
 
     # ── Donor info ──
     donor_name = db.Column(db.String(200), nullable=False)
@@ -165,6 +168,7 @@ class Donation(db.Model):
                  pickup_window_start=None, pickup_window_end=None,
                  donor_id=None, receiver_id=None, volunteer_id=None,
                  temperature_at_pickup=None, storage_method=None,
+                 prepared_at=None, requires_review=False, safety_score=100,
                  # Week 2 lifecycle kwargs
                  claimed_by=None, claimed_at=None, in_transit_at=None,
                  delivered_by=None, delivered_at=None,
@@ -199,6 +203,9 @@ class Donation(db.Model):
         self.receiver_id = receiver_id
         self.volunteer_id = volunteer_id
         self.status = status
+        self.prepared_at = prepared_at
+        self.requires_review = requires_review
+        self.safety_score = safety_score
         # Week 2 lifecycle
         self.claimed_by = claimed_by
         self.claimed_at = claimed_at
@@ -230,6 +237,9 @@ class Donation(db.Model):
             'dietary_tags': self.dietary_tags or [],
             'temperature_at_pickup': self.temperature_at_pickup,
             'storage_method': self.storage_method,
+            'prepared_at': self.prepared_at.isoformat() if self.prepared_at else None,
+            'requires_review': self.requires_review,
+            'safety_score': self.safety_score,
             'donor_name': self.donor_name,
             'donor_email': self.donor_email,
             'donor_phone': self.donor_phone,
