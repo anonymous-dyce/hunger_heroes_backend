@@ -17,6 +17,9 @@ from model.donation import (
     VALID_TRANSITIONS,
 )
 from model.user import User
+from model.food_safety_log import FoodSafetyLog
+from model.allergen_profile import AllergenProfile
+from services.safety_calculator import SafetyScoreCalculator
 
 # Blueprint setup
 donation_api = Blueprint('donation_api', __name__, url_prefix='/api')
@@ -66,7 +69,8 @@ class DonationListAPI(Resource):
 
         required = [
             'food_name', 'category', 'quantity', 'unit',
-            'expiry_date', 'storage', 'donor_name', 'donor_email', 'donor_zip'
+            'expiry_date', 'storage', 'donor_name', 'donor_email', 'donor_zip',
+            'prepared_at', 'storage_method'  # Food Safety Compliance requirements
         ]
         for field in required:
             if not data.get(field):
@@ -85,6 +89,18 @@ class DonationListAPI(Resource):
         storage_method = data.get('storage_method')
         if storage_method and storage_method not in ALLOWED_STORAGE_METHODS:
             return {'message': f'Invalid storage_method: {storage_method}. Allowed: {ALLOWED_STORAGE_METHODS}'}, 400
+        if not storage_method:
+            return {'message': 'storage_method is required for food safety compliance'}, 400
+
+        # ── Food Safety Compliance: Validate prepared_at ──
+        prepared_at = None
+        if data.get('prepared_at'):
+            try:
+                prepared_at = datetime.fromisoformat(data['prepared_at'])
+                if prepared_at > datetime.utcnow():
+                    return {'message': 'prepared_at cannot be in the future'}, 400
+            except (ValueError, TypeError):
+                return {'message': 'Invalid prepared_at format. Use ISO 8601 (e.g., 2026-03-18T10:30:00)'}, 400
 
         allergens = data.get('allergens', [])
         for a in allergens:
@@ -177,6 +193,7 @@ class DonationListAPI(Resource):
             dietary_tags=dietary_tags,
             temperature_at_pickup=temperature_at_pickup,
             storage_method=storage_method,
+            prepared_at=prepared_at,  # Food Safety Field
             donor_name=data['donor_name'],
             donor_email=data['donor_email'],
             donor_phone=data.get('donor_phone', ''),
@@ -197,6 +214,30 @@ class DonationListAPI(Resource):
             log_status_change(donation_id, 'none', 'posted',
                               user_name or data['donor_name'], 'Donation created')
             db.session.commit()
+
+            # ── Compute initial safety score ──
+            safety_result = SafetyScoreCalculator.update_donation_safety_score(donation)
+
+            # ── Create allergen profile if provided ──
+            allergen_profile_data = data.get('allergen_profile')
+            if allergen_profile_data:
+                allergen_profile = AllergenProfile(
+                    donation_id=donation_id,
+                    contains_nuts=allergen_profile_data.get('contains_nuts', False),
+                    contains_dairy=allergen_profile_data.get('contains_dairy', False),
+                    contains_gluten=allergen_profile_data.get('contains_gluten', False),
+                    contains_soy=allergen_profile_data.get('contains_soy', False),
+                    contains_shellfish=allergen_profile_data.get('contains_shellfish', False),
+                    contains_eggs=allergen_profile_data.get('contains_eggs', False),
+                    other_allergens=allergen_profile_data.get('other_allergens', []),
+                    is_vegetarian=allergen_profile_data.get('is_vegetarian', False),
+                    is_vegan=allergen_profile_data.get('is_vegan', False),
+                    is_halal=allergen_profile_data.get('is_halal', False),
+                    is_kosher=allergen_profile_data.get('is_kosher', False),
+                )
+                db.session.add(allergen_profile)
+                db.session.commit()
+
         except Exception as e:
             db.session.rollback()
             return {'message': f'Failed to create donation: {str(e)}'}, 500
@@ -205,7 +246,10 @@ class DonationListAPI(Resource):
             'id': donation_id,
             'message': 'Donation created successfully',
             'status': 'posted',
-            'donation': donation.to_dict()
+            'donation': donation.to_dict(),
+            'safety_score': safety_result.get('score'),
+            'requires_review': safety_result.get('requires_review'),
+            'safety_warnings': safety_result.get('warnings', []),
         }, 201
 
     def get(self):
@@ -728,6 +772,237 @@ class DonationDeliverAPI(Resource):
             'auto_remove_at': auto_remove_at,
         }, 200
 
+# 11. POST /api/donations/{id}/safety-log -- Record food safety inspection
+class SafetyLogAPI(Resource):
+
+    def post(self, donation_id):
+        """Create a new food safety log for a donation."""
+        donation = Donation.query.get(donation_id)
+        if not donation or donation.is_archived:
+            return {'message': 'Donation not found'}, 404
+
+        data = request.get_json()
+        if not data:
+            return {'message': 'Request body is required'}, 400
+
+        temperature_reading = data.get('temperature_reading')
+        storage_method = data.get('storage_method')
+        handling_notes = data.get('handling_notes', '')
+        passed_inspection = data.get('passed_inspection', True)
+        notes = data.get('notes', '')
+
+        # Validate temperature reading
+        if temperature_reading is not None:
+            try:
+                temperature_reading = float(temperature_reading)
+            except (ValueError, TypeError):
+                return {'message': 'temperature_reading must be a number'}, 400
+
+        # Validate storage method
+        if storage_method and storage_method not in ALLOWED_STORAGE_METHODS:
+            return {'message': f'Invalid storage_method: {storage_method}. Allowed: {ALLOWED_STORAGE_METHODS}'}, 400
+
+        current_user = _try_get_current_user()
+        inspector_id = current_user.id if current_user else None
+
+        try:
+            safety_log = FoodSafetyLog(
+                donation_id=donation_id,
+                temperature_reading=temperature_reading,
+                storage_method=storage_method or donation.storage_method,
+                handling_notes=handling_notes,
+                inspector_id=inspector_id,
+                passed_inspection=passed_inspection,
+                inspection_date=datetime.utcnow(),
+                notes=notes,
+            )
+            db.session.add(safety_log)
+            db.session.commit()
+
+            # Recalculate safety score
+            safety_result = SafetyScoreCalculator.update_donation_safety_score(donation)
+
+            return {
+                'message': 'Safety log created successfully',
+                'safety_log': safety_log.read() if hasattr(safety_log, 'read') else {
+                    'id': safety_log.id,
+                    'donation_id': safety_log.donation_id,
+                    'temperature_reading': safety_log.temperature_reading,
+                    'storage_method': safety_log.storage_method,
+                    'handling_notes': safety_log.handling_notes,
+                    'passed_inspection': safety_log.passed_inspection,
+                    'logged_at': safety_log.logged_at.isoformat() if safety_log.logged_at else None,
+                },
+                'updated_safety_score': safety_result['score'],
+                'requires_review': safety_result['requires_review'],
+            }, 201
+
+        except Exception as e:
+            db.session.rollback()
+            return {'message': f'Failed to create safety log: {str(e)}'}, 500
+
+    def get(self, donation_id):
+        """Get all safety logs for a donation."""
+        donation = Donation.query.get(donation_id)
+        if not donation or donation.is_archived:
+            return {'message': 'Donation not found'}, 404
+
+        logs = FoodSafetyLog.query.filter_by(donation_id=donation_id).order_by(
+            FoodSafetyLog.logged_at.desc()
+        ).all()
+
+        return {
+            'donation_id': donation_id,
+            'safety_logs': [
+                {
+                    'id': log.id,
+                    'donation_id': log.donation_id,
+                    'temperature_reading': log.temperature_reading,
+                    'storage_method': log.storage_method,
+                    'handling_notes': log.handling_notes,
+                    'passed_inspection': log.passed_inspection,
+                    'inspector_id': log.inspector_id,
+                    'inspector_name': _get_user_name(log.inspector) if log.inspector else None,
+                    'logged_at': log.logged_at.isoformat() if log.logged_at else None,
+                    'notes': log.notes,
+                }
+                for log in logs
+            ],
+            'total': len(logs),
+        }, 200
+
+
+# 12. GET /api/donations/{id}/safety-status -- Get computed safety score
+
+class SafetyStatusAPI(Resource):
+
+    def get(self, donation_id):
+        """Get computed safety status and score for a donation."""
+        donation = Donation.query.get(donation_id)
+        if not donation or donation.is_archived:
+            return {'message': 'Donation not found'}, 404
+
+        # Calculate current safety score
+        safety_result = SafetyScoreCalculator.calculate_safety_score(donation)
+
+        # Get all safety logs
+        logs = FoodSafetyLog.query.filter_by(donation_id=donation_id).order_by(
+            FoodSafetyLog.logged_at.desc()
+        ).all()
+
+        failed_inspections = [log for log in logs if not log.passed_inspection]
+
+        return {
+            'donation_id': donation_id,
+            'safety_score': safety_result['score'],
+            'requires_review': safety_result['requires_review'],
+            'factors': safety_result['factors'],
+            'warnings': safety_result['warnings'],
+            'inspection_summary': {
+                'total_inspections': len(logs),
+                'passed_inspections': len(logs) - len(failed_inspections),
+                'failed_inspections': len(failed_inspections),
+                'last_inspection': logs[0].logged_at.isoformat() if logs else None,
+            },
+            'food_details': {
+                'food_type': donation.food_type,
+                'prepared_at': donation.prepared_at.isoformat() if donation.prepared_at else None,
+                'expiry_date': donation.expiry_date.isoformat() if donation.expiry_date else None,
+                'temperature_at_pickup': donation.temperature_at_pickup,
+                'storage_method': donation.storage_method,
+                'storage_type': donation.storage,
+            },
+        }, 200
+
+
+# 13. POST /api/donations/{id}/allergens -- Create/update allergen profile
+
+class AllergenProfileAPI(Resource):
+
+    def post(self, donation_id):
+        """Create or update allergen profile for a donation."""
+        donation = Donation.query.get(donation_id)
+        if not donation or donation.is_archived:
+            return {'message': 'Donation not found'}, 404
+
+        data = request.get_json()
+        if not data:
+            return {'message': 'Request body is required'}, 400
+
+        # Check if allergen profile already exists
+        existing_profile = AllergenProfile.query.filter_by(donation_id=donation_id).first()
+
+        if existing_profile:
+            # Update existing profile
+            try:
+                for key in ['contains_nuts', 'contains_dairy', 'contains_gluten',
+                           'contains_soy', 'contains_shellfish', 'contains_eggs',
+                           'other_allergens', 'is_vegetarian', 'is_vegan',
+                           'is_halal', 'is_kosher']:
+                    if key in data:
+                        setattr(existing_profile, key, data[key])
+
+                existing_profile.updated_at = datetime.utcnow()
+                db.session.commit()
+
+                return {
+                    'message': 'Allergen profile updated successfully',
+                    'allergen_profile': existing_profile.read(),
+                }, 200
+
+            except Exception as e:
+                db.session.rollback()
+                return {'message': f'Failed to update allergen profile: {str(e)}'}, 500
+
+        else:
+            # Create new profile
+            try:
+                profile = AllergenProfile(
+                    donation_id=donation_id,
+                    contains_nuts=data.get('contains_nuts', False),
+                    contains_dairy=data.get('contains_dairy', False),
+                    contains_gluten=data.get('contains_gluten', False),
+                    contains_soy=data.get('contains_soy', False),
+                    contains_shellfish=data.get('contains_shellfish', False),
+                    contains_eggs=data.get('contains_eggs', False),
+                    other_allergens=data.get('other_allergens', []),
+                    is_vegetarian=data.get('is_vegetarian', False),
+                    is_vegan=data.get('is_vegan', False),
+                    is_halal=data.get('is_halal', False),
+                    is_kosher=data.get('is_kosher', False),
+                )
+                db.session.add(profile)
+                db.session.commit()
+
+                return {
+                    'message': 'Allergen profile created successfully',
+                    'allergen_profile': profile.read(),
+                }, 201
+
+            except Exception as e:
+                db.session.rollback()
+                return {'message': f'Failed to create allergen profile: {str(e)}'}, 500
+
+    def get(self, donation_id):
+        """Get allergen profile for a donation."""
+        donation = Donation.query.get(donation_id)
+        if not donation or donation.is_archived:
+            return {'message': 'Donation not found'}, 404
+
+        profile = AllergenProfile.query.filter_by(donation_id=donation_id).first()
+
+        if not profile:
+            return {
+                'donation_id': donation_id,
+                'allergen_profile': None,
+                'message': 'No allergen profile found for this donation',
+            }, 404
+
+        return {
+            'donation_id': donation_id,
+            'allergen_profile': profile.read(),
+        }, 200
+
 
 # Register routes
 # IMPORTANT: static paths (stats, scan, cleanup) BEFORE parameterized routes
@@ -742,6 +1017,12 @@ api.add_resource(DonationStatusAPI, '/donations/<string:donation_id>/status')
 api.add_resource(DonationLabelAPI, '/donations/<string:donation_id>/label')
 api.add_resource(VolunteerAssignAPI, '/donations/<string:donation_id>/assign-volunteer')
 api.add_resource(VolunteerAssignmentsAPI, '/volunteers/<int:volunteer_id>/assignments')
+
+# Week 3 endpoints (Food Safety Compliance)
+api.add_resource(SafetyLogAPI, '/donations/<string:donation_id>/safety-log')
+api.add_resource(SafetyLogAPI, '/donations/<string:donation_id>/safety-logs')  # GET
+api.add_resource(SafetyStatusAPI, '/donations/<string:donation_id>/safety-status')
+api.add_resource(AllergenProfileAPI, '/donations/<string:donation_id>/allergens')
 
 # Legacy Week 1 endpoints (singular /donation) -- backward compat
 api.add_resource(DonationAcceptAPI, '/donation/<string:donation_id>/accept')
