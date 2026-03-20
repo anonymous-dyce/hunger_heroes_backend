@@ -40,6 +40,7 @@ from api.subscription import subscription_api
 from api.stripe_api import stripe_api
 from api.businesses import businesses_api
 from api.donation import donation_api
+from api.analytics import analytics_api
 # Authentication endpoints
 from model.auth import auth_bp, users_bp
 
@@ -85,6 +86,7 @@ app.register_blueprint(subscription_api)
 app.register_blueprint(stripe_api)
 app.register_blueprint(businesses_api)
 app.register_blueprint(donation_api)
+app.register_blueprint(analytics_api)
 # Register authentication blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(users_bp)
