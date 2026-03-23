@@ -41,6 +41,7 @@ from api.stripe_api import stripe_api
 from api.businesses import businesses_api
 from api.donation import donation_api
 from api.analytics import analytics_api
+from api.admin import admin_api
 # Authentication endpoints
 from model.auth import auth_bp, users_bp
 
@@ -57,6 +58,7 @@ from model.vote import Vote, initVotes
 from model.savedLocations import SavedLocations, initSavedLocations
 from model.subscription import Subscription, SubscriptionRequest, PaymentHistory, RouteUsage, initSubscriptions
 from model.donation import Donation, DonationStatusLog, VolunteerAssignment, initDonations
+from model.flag import Flag
 from model.cleanup import start_cleanup_scheduler
 
 
@@ -87,6 +89,7 @@ app.register_blueprint(stripe_api)
 app.register_blueprint(businesses_api)
 app.register_blueprint(donation_api)
 app.register_blueprint(analytics_api)
+app.register_blueprint(admin_api)
 # Register authentication blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(users_bp)
