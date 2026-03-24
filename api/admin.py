@@ -15,6 +15,12 @@ from model.donation import Donation
 from model.organization import Organization
 from model.flag import Flag
 from api.admin_middleware import admin_required
+from api.validators import (
+    validate_request_data, UpdateDonationSchema, VerifyOrganizationSchema,
+    ResolveFlagSchema, SuspendUserSchema
+)
+from api.rate_limiter import rate_limit, admin_limiter
+from api.api_logger import api_logger
 
 
 # Create admin blueprint
@@ -123,6 +129,7 @@ def serialize_organization(org):
 
 @admin_api.route('/donations', methods=['GET'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def get_donations():
     """
     GET /api/admin/donations
@@ -193,6 +200,7 @@ def get_donations():
 
 @admin_api.route('/donations/<donation_id>', methods=['PATCH'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def patch_donation(donation_id):
     """
     PATCH /api/admin/donations/{id}
@@ -210,31 +218,57 @@ def patch_donation(donation_id):
         Updated donation
     """
     try:
+        # Validate request data
+        data = request.get_json()
+        validated_data, errors = validate_request_data(UpdateDonationSchema, data)
+        
+        if errors:
+            api_logger.log_security_event('VALIDATION_ERROR', {
+                'endpoint': 'admin/donations/PATCH',
+                'errors': errors,
+                'donation_id': donation_id
+            })
+            return {
+                'success': False,
+                'message': 'Validation failed',
+                'error': errors,
+                'status': 400
+            }, 400
+        
         donation = Donation.query.filter_by(id=donation_id).first()
         
         if not donation:
+            api_logger.logger.warning(f'Donation not found: {donation_id}')
             return {
                 'success': False,
                 'message': 'Donation not found',
                 'status': 404
             }, 404
         
-        data = request.get_json()
+        # Update donation fields with validated data
+        if 'status' in validated_data and validated_data['status']:
+            old_status = donation.status
+            donation.status = validated_data['status']
+            api_logger.log_admin_action('UPDATE_STATUS', 'Donation', donation_id, {
+                'old_status': old_status,
+                'new_status': validated_data['status']
+            })
         
-        # Update donation fields
-        if 'status' in data:
-            donation.status = data['status']
+        if 'safety_score' in validated_data and validated_data['safety_score'] is not None:
+            old_score = donation.safety_score
+            donation.safety_score = validated_data['safety_score']
+            api_logger.log_admin_action('UPDATE_SAFETY_SCORE', 'Donation', donation_id, {
+                'old_score': old_score,
+                'new_score': validated_data['safety_score']
+            })
         
-        if 'safety_score' in data:
-            donation.safety_score = data['safety_score']
+        if 'requires_review' in validated_data and validated_data['requires_review'] is not None:
+            donation.requires_review = validated_data['requires_review']
         
-        if 'requires_review' in data:
-            donation.requires_review = data['requires_review']
-        
-        # Log admin action in donation comments/metadata if needed
         donation.updated_at = datetime.utcnow()
-        
         db.session.commit()
+        
+        api_logger.logger.info(f'Donation updated successfully: {donation_id}')
         
         return {
             'success': True,
@@ -245,6 +279,10 @@ def patch_donation(donation_id):
     
     except Exception as e:
         db.session.rollback()
+        api_logger.log_error(e, context={
+            'endpoint': 'admin/donations/PATCH',
+            'donation_id': donation_id
+        })
         return {
             'success': False,
             'message': 'Error updating donation',
@@ -259,6 +297,7 @@ def patch_donation(donation_id):
 
 @admin_api.route('/organizations', methods=['GET'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def get_organizations():
     """
     GET /api/admin/organizations
@@ -319,6 +358,7 @@ def get_organizations():
 
 @admin_api.route('/organizations/<int:org_id>/verify', methods=['PATCH'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def patch_organization_verify(org_id):
     """
     PATCH /api/admin/organizations/{id}/verify
@@ -337,6 +377,7 @@ def patch_organization_verify(org_id):
         organization = Organization.query.filter_by(id=org_id).first()
         
         if not organization:
+            api_logger.logger.warning(f'Organization not found: {org_id}')
             return {
                 'success': False,
                 'message': 'Organization not found',
@@ -345,14 +386,30 @@ def patch_organization_verify(org_id):
         
         data = request.get_json()
         
-        if 'is_verified' not in data:
+        # Validate request data
+        validated_data, errors = validate_request_data(VerifyOrganizationSchema, data)
+        
+        if errors:
+            api_logger.log_security_event('VALIDATION_ERROR', {
+                'endpoint': 'admin/organizations/verify',
+                'errors': errors,
+                'org_id': org_id
+            })
             return {
                 'success': False,
-                'message': 'is_verified field is required',
+                'message': 'Validation failed',
+                'error': errors,
                 'status': 400
             }, 400
         
-        is_verified = data['is_verified']
+        is_verified = validated_data['is_verified']
+        
+        # Log admin action
+        action = 'VERIFY' if is_verified else 'UNVERIFY'
+        api_logger.log_admin_action(action, 'Organization', org_id, {
+            'previous_status': organization.is_verified,
+            'new_status': is_verified
+        })
         
         # Update verification status
         organization.is_verified = is_verified
@@ -367,6 +424,8 @@ def patch_organization_verify(org_id):
         organization.updated_at = datetime.utcnow()
         db.session.commit()
         
+        api_logger.logger.info(f'Organization {"verified" if is_verified else "unverified"}: {org_id}')
+        
         return {
             'success': True,
             'message': f'Organization {"verified" if is_verified else "unverified"} successfully',
@@ -376,6 +435,10 @@ def patch_organization_verify(org_id):
     
     except Exception as e:
         db.session.rollback()
+        api_logger.log_error(e, context={
+            'endpoint': 'admin/organizations/verify',
+            'org_id': org_id
+        })
         return {
             'success': False,
             'message': 'Error updating organization verification',
@@ -390,6 +453,7 @@ def patch_organization_verify(org_id):
 
 @admin_api.route('/flags', methods=['GET'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def get_flags():
     """
     GET /api/admin/flags
@@ -469,6 +533,7 @@ def get_flags():
 
 @admin_api.route('/flags/<int:flag_id>/resolve', methods=['PATCH'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def patch_flag_resolve(flag_id):
     """
     PATCH /api/admin/flags/{id}/resolve
@@ -488,6 +553,7 @@ def patch_flag_resolve(flag_id):
         flag = Flag.query.filter_by(id=flag_id).first()
         
         if not flag:
+            api_logger.logger.warning(f'Flag not found: {flag_id}')
             return {
                 'success': False,
                 'message': 'Flag not found',
@@ -496,9 +562,32 @@ def patch_flag_resolve(flag_id):
         
         data = request.get_json()
         
+        # Validate request data
+        validated_data, errors = validate_request_data(ResolveFlagSchema, data)
+        
+        if errors:
+            api_logger.log_security_event('VALIDATION_ERROR', {
+                'endpoint': 'admin/flags/resolve',
+                'errors': errors,
+                'flag_id': flag_id
+            })
+            return {
+                'success': False,
+                'message': 'Validation failed',
+                'error': errors,
+                'status': 400
+            }, 400
+        
+        # Log admin action
+        api_logger.log_admin_action('RESOLVE_FLAG', 'Flag', flag_id, {
+            'old_status': flag.status,
+            'new_status': validated_data.get('status', 'resolved'),
+            'severity': flag.severity
+        })
+        
         # Resolve the flag
-        resolution_notes = data.get('resolution_notes', '')
-        new_status = data.get('status', 'resolved')
+        new_status = validated_data.get('status', 'resolved')
+        resolution_notes = validated_data['resolution_notes']
         
         flag.status = new_status
         flag.resolution_notes = resolution_notes
@@ -510,6 +599,8 @@ def patch_flag_resolve(flag_id):
         flag.updated_at = datetime.utcnow()
         db.session.commit()
         
+        api_logger.logger.info(f'Flag resolved successfully: {flag_id}')
+        
         return {
             'success': True,
             'message': 'Flag resolved successfully',
@@ -519,6 +610,10 @@ def patch_flag_resolve(flag_id):
     
     except Exception as e:
         db.session.rollback()
+        api_logger.log_error(e, context={
+            'endpoint': 'admin/flags/resolve',
+            'flag_id': flag_id
+        })
         return {
             'success': False,
             'message': 'Error resolving flag',
@@ -533,6 +628,7 @@ def patch_flag_resolve(flag_id):
 
 @admin_api.route('/users', methods=['GET'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def get_users():
     """
     GET /api/admin/users
@@ -605,6 +701,7 @@ def get_users():
 
 @admin_api.route('/users/<int:user_id>', methods=['GET'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def get_user_detail(user_id):
     """
     GET /api/admin/users/{id}
@@ -653,6 +750,7 @@ def get_user_detail(user_id):
 
 @admin_api.route('/users/<int:user_id>/suspend', methods=['PATCH'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def patch_user_suspend(user_id):
     """
     PATCH /api/admin/users/{id}/suspend
@@ -671,6 +769,7 @@ def patch_user_suspend(user_id):
         user = User.query.filter_by(id=user_id).first()
         
         if not user:
+            api_logger.logger.warning(f'User not found: {user_id}')
             return {
                 'success': False,
                 'message': 'User not found',
@@ -679,28 +778,64 @@ def patch_user_suspend(user_id):
         
         data = request.get_json()
         
-        if 'is_active' not in data:
+        # Validate request data
+        validated_data, errors = validate_request_data(SuspendUserSchema, data)
+        
+        if errors:
+            api_logger.log_security_event('VALIDATION_ERROR', {
+                'endpoint': 'admin/users/suspend',
+                'errors': errors,
+                'user_id': user_id
+            })
             return {
                 'success': False,
-                'message': 'is_active field is required',
+                'message': 'Validation failed',
+                'error': errors,
                 'status': 400
             }, 400
         
-        user.is_active = data['is_active']
+        # Prevent admin from suspending themselves
+        if user.id == g.current_user.id:
+            api_logger.log_security_event('ADMIN_SELF_ACTION_ATTEMPT', {
+                'action': 'suspend',
+                'admin_id': g.current_user.id
+            })
+            return {
+                'success': False,
+                'message': 'Cannot suspend your own account',
+                'status': 400
+            }, 400
+        
+        is_active = validated_data['is_active']
+        
+        # Log admin action
+        action = 'ACTIVATE' if is_active else 'SUSPEND'
+        api_logger.log_admin_action(action, 'User', user_id, {
+            'previous_status': user.is_active,
+            'new_status': is_active,
+            'reason': validated_data.get('reason', 'No reason provided')
+        })
+        
+        user.is_active = is_active
         user.updated_at = datetime.utcnow()
         db.session.commit()
         
-        action = 'activated' if data['is_active'] else 'suspended'
+        action_name = 'activated' if is_active else 'suspended'
+        api_logger.logger.info(f'User {action_name}: {user_id}')
         
         return {
             'success': True,
-            'message': f'User {action} successfully',
+            'message': f'User {action_name} successfully',
             'data': serialize_user(user),
             'status': 200
         }, 200
     
     except Exception as e:
         db.session.rollback()
+        api_logger.log_error(e, context={
+            'endpoint': 'admin/users/suspend',
+            'user_id': user_id
+        })
         return {
             'success': False,
             'message': 'Error updating user status',
@@ -715,6 +850,7 @@ def patch_user_suspend(user_id):
 
 @admin_api.route('/stats', methods=['GET'])
 @admin_required
+@rate_limit(limiter=admin_limiter)
 def get_admin_stats():
     """
     GET /api/admin/stats
